@@ -142,42 +142,63 @@ def delete_book(cursor, conn):
 
 def borrow_book(cursor, conn):
     book_id = input("Enter the Book ID to borrow: ").strip().upper()
-    cursor.execute(f"SELECT status FROM {TABLE_NAME} WHERE id = %s", (book_id,))
+    cursor.execute("SELECT status FROM Books WHERE id = %s", (book_id,))
     result = cursor.fetchone()
-    
+
     if not result:
         print("Book not found.")
+        return
     elif result[0].lower() == "checked out":
         print("Book already checked out.")
-    else:
-        borrower_name = input("Enter your name: ").strip()
-        cursor.execute(f"UPDATE {TABLE_NAME} SET status = 'Checked Out' WHERE id = %s", (book_id,))
+        return
+
+    borrower_name = input("Enter your name: ").strip()
+    
+    try:
+        # Begin transaction
+        cursor.execute("START TRANSACTION")
+        
+        cursor.execute("UPDATE Books SET status = 'Checked Out' WHERE id = %s", (book_id,))
         cursor.execute("""
             INSERT INTO Borrowers (book_id, borrower_name)
             VALUES (%s, %s)
         """, (book_id, borrower_name))
+
         conn.commit()
         print("Book borrowed successfully.")
+    except Exception as e:
+        conn.rollback()
+        print("Error occurred while borrowing book:", e)
 
 
 def return_book(cursor, conn):
     book_id = input("Enter the Book ID to return: ").strip().upper()
-    cursor.execute(f"SELECT status FROM {TABLE_NAME} WHERE id = %s", (book_id,))
+    cursor.execute("SELECT status FROM Books WHERE id = %s", (book_id,))
     result = cursor.fetchone()
 
     if not result:
         print("Book not found.")
+        return
     elif result[0].lower() == "present":
         print("Book is already marked as present.")
-    else:
-        cursor.execute(f"UPDATE {TABLE_NAME} SET status = 'Present' WHERE id = %s", (book_id,))
+        return
+
+    try:
+        # Begin transaction
+        cursor.execute("START TRANSACTION")
+
+        cursor.execute("UPDATE Books SET status = 'Present' WHERE id = %s", (book_id,))
         cursor.execute("""
             UPDATE Borrowers
             SET return_date = CURRENT_TIMESTAMP
             WHERE book_id = %s AND return_date IS NULL
         """, (book_id,))
+
         conn.commit()
         print("Book returned successfully.")
+    except Exception as e:
+        conn.rollback()
+        print("Error occurred while returning book:", e)
 
 
 def show_structure(cursor):
@@ -186,7 +207,6 @@ def show_structure(cursor):
     print("\nTable Structure:")
     for column in structure:
         print(column)
-
 
 def show_deleted_books(cursor):
     cursor.execute("SELECT * FROM log_table WHERE action_type = 'DELETE'")
@@ -197,7 +217,6 @@ def show_deleted_books(cursor):
         print("\nDeleted Books:")
         for row in rows:
             print(row)
-
 
 def show_borrowed_books(cursor):
     cursor.execute("""
@@ -211,6 +230,14 @@ def show_borrowed_books(cursor):
     for row in rows:
         print(f"ID: {row[0]}, Title: {row[1]}, Borrower: {row[2]}, Date: {row[3]}")
 
+def display_update_log(cursor):
+    cursor.execute("SELECT * FROM log_table WHERE action_type = 'UPDATE'")
+    rows = cursor.fetchall()
+    print("\nUpdate Log (Status Changes):")
+    if not rows:
+        print("No status updates found.")
+    for row in rows:
+        print(f"Log ID: {row[0]}, Book ID: {row[1]}, Old Status: {row[2]}, New Status: {row[3]}, Timestamp: {row[5]}")
 
 
 def main_menu():
@@ -218,6 +245,7 @@ def main_menu():
     setup_database(cursor)
     cursor.execute(f"USE {DB_NAME}")
     import_csv(cursor, conn, "library_dataset_random.csv")
+    print("Welcome to the Library")
 
     while True:
         print("\nLibrary Menu")
@@ -230,7 +258,8 @@ def main_menu():
         print("7. Return a book")
         print("8. Show deleted books")
         print("9. Show borrowed books")
-        print("10. Exit")
+        print("10. Show update log")
+        print("11. Exit")
 
         choice = input("Choose an option: ")
 
@@ -253,6 +282,8 @@ def main_menu():
         elif choice == "9":
             show_borrowed_books(cursor)
         elif choice == "10":
+            display_update_log(cursor)
+        elif choice == "11":
             break
         else:
             print("Invalid option. Try again.")
