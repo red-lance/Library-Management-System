@@ -1,21 +1,23 @@
 import mysql.connector
 import pandas as pd
 
-DB_NAME = "LibraryDB"
-TABLE_NAME = "Books"
+DB_NAME = "LibraryDB" #Database name
+TABLE_NAME = "Books"  # Table name
 
-def connect_db():
-    conn = mysql.connector.connect(
+def connect_db(): # Function to connect python to SQL server
+    conn = mysql.connector.connect( # Variable that connects to mysql server
         host="localhost",
         user="root",
-        password="yourpassword"
+        password="yourpassword" # Changed password as every user has different password
     )
-    cursor = conn.cursor()
+    cursor = conn.cursor() # Cursor object
     return conn, cursor
 
-def setup_database(cursor):
+def setup_database(cursor): # Function to create database and tables in database
     cursor.execute(f"CREATE DATABASE IF NOT EXISTS {DB_NAME}")
     cursor.execute(f"USE {DB_NAME}")
+
+    # Create Books Table
     cursor.execute(f"""
         CREATE TABLE IF NOT EXISTS {TABLE_NAME} (
             id VARCHAR(10) PRIMARY KEY,
@@ -80,6 +82,7 @@ def setup_database(cursor):
         END;
     """)
 
+# Function to import CSV file
 def import_csv(cursor, conn, file_path):
     df = pd.read_csv(file_path)
     for _, row in df.iterrows():
@@ -101,12 +104,14 @@ def import_csv(cursor, conn, file_path):
     conn.commit()
     print("CSV data imported successfully.")
 
+# Function to display all books
 def display_books(cursor):
     cursor.execute(f"SELECT * FROM {TABLE_NAME}")
     rows = cursor.fetchall()
     for row in rows:
         print(row)
 
+# Function to add a book -> If a book with same id is added then the code gives an error and exits the system
 def add_book(cursor, conn):
     data = input("Enter book details (id, title, author, category, cabinet, rack, row, timestamp, status):\n").split(",")
     data[-1] = data[-1][:50]  # Trim status
@@ -117,13 +122,14 @@ def add_book(cursor, conn):
     conn.commit()
     print("Book added successfully.")
 
+# Function to update details of the book and add to the update log table
 def update_book(cursor, conn):
     book_id = input("Enter the Book ID to update: ")
     cursor.execute(f"SELECT * FROM {TABLE_NAME} WHERE id = %s", (book_id,))
     if cursor.fetchone() is None:
         print("No book found with the given ID.")
         return
-    column = input("Enter column to update (e.g., title, author, status): ")
+    column = input("Enter Column to update -> Status: ")
     value = input(f"Enter new value for {column}: ")
     if column == "status":
         value = value[:50]
@@ -131,6 +137,7 @@ def update_book(cursor, conn):
     conn.commit()
     print("Book updated.")
 
+# Function to delete a book
 def delete_book(cursor, conn):
     book_id = input("Enter the Book ID to delete: ")
     cursor.execute(f"DELETE FROM {TABLE_NAME} WHERE id = %s", (book_id,))
@@ -140,6 +147,7 @@ def delete_book(cursor, conn):
         conn.commit()
         print("Book deleted.")
 
+#Function to borrow book
 def borrow_book(cursor, conn):
     book_id = input("Enter the Book ID to borrow: ").strip().upper()
     cursor.execute("SELECT status FROM Books WHERE id = %s", (book_id,))
@@ -155,7 +163,8 @@ def borrow_book(cursor, conn):
     borrower_name = input("Enter your name: ").strip()
     
     try:
-        # Begin transaction
+        # Begin transaction -> Sets status as checked out if this function is called and book is not checked out already. This transaction
+        # also adds the book borrowed into another table called Borrowers
         cursor.execute("START TRANSACTION")
         
         cursor.execute("UPDATE Books SET status = 'Checked Out' WHERE id = %s", (book_id,))
@@ -170,7 +179,7 @@ def borrow_book(cursor, conn):
         conn.rollback()
         print("Error occurred while borrowing book:", e)
 
-
+# Function to return book
 def return_book(cursor, conn):
     book_id = input("Enter the Book ID to return: ").strip().upper()
     cursor.execute("SELECT status FROM Books WHERE id = %s", (book_id,))
@@ -184,7 +193,8 @@ def return_book(cursor, conn):
         return
 
     try:
-        # Begin transaction
+        # Begin transaction -> Sets status as checked out if this function is called and book is not checked out already. This transaction
+        # also updates the in Borrowers
         cursor.execute("START TRANSACTION")
 
         cursor.execute("UPDATE Books SET status = 'Present' WHERE id = %s", (book_id,))
@@ -200,7 +210,7 @@ def return_book(cursor, conn):
         conn.rollback()
         print("Error occurred while returning book:", e)
 
-
+# Function to show the structure of the table
 def show_structure(cursor):
     cursor.execute(f"DESCRIBE {TABLE_NAME}")
     structure = cursor.fetchall()
@@ -208,6 +218,7 @@ def show_structure(cursor):
     for column in structure:
         print(column)
 
+# Function to show deleted books
 def show_deleted_books(cursor):
     cursor.execute("SELECT * FROM log_table WHERE action_type = 'DELETE'")
     rows = cursor.fetchall()
@@ -218,6 +229,7 @@ def show_deleted_books(cursor):
         for row in rows:
             print(row)
 
+# Function to show borrowed books
 def show_borrowed_books(cursor):
     cursor.execute("""
         SELECT b.id, b.title, br.borrower_name, br.borrow_date
@@ -230,6 +242,7 @@ def show_borrowed_books(cursor):
     for row in rows:
         print(f"ID: {row[0]}, Title: {row[1]}, Borrower: {row[2]}, Date: {row[3]}")
 
+# Function to show update log
 def display_update_log(cursor):
     cursor.execute("SELECT * FROM log_table WHERE action_type = 'UPDATE'")
     rows = cursor.fetchall()
@@ -239,7 +252,7 @@ def display_update_log(cursor):
     for row in rows:
         print(f"Log ID: {row[0]}, Book ID: {row[1]}, Old Status: {row[2]}, New Status: {row[3]}, Timestamp: {row[5]}")
 
-
+# Main function
 def main_menu():
     conn, cursor = connect_db()
     setup_database(cursor)
@@ -292,6 +305,6 @@ def main_menu():
     conn.close()
     print("Exiting...")
 
-
+# Executes main function
 if __name__ == "__main__":
     main_menu()
